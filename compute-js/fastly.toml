@@ -1,0 +1,19 @@
+# This file describes a Fastly Compute package. To learn more visit:
+# https://www.fastly.com/documentation/reference/compute/fastly-toml
+
+authors = ["serra-fastly"]
+description = "Fanout Bidding Demo - Next.js static site with API routes"
+language = "javascript"
+manifest_version = 3
+name = "fanout-bidding-demo-origin"
+service_id = "AXoqT8Ikjo0ad5aGkBpKWg"
+
+[local_server]
+
+  [local_server.backends]
+
+    [local_server.backends.fanout_publisher]
+      url = "http://127.0.0.1:5561"
+
+[scripts]
+  build = "npm run build"

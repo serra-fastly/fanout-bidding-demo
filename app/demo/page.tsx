@@ -2,8 +2,20 @@
 
 import { useState, useRef } from "react";
 
-// Fanout endpoint - requests go through the edge at 7676
-const FANOUT_BASE = "http://localhost:7676";
+// In production (Fastly), Fanout is same-origin. Locally, use port 7676.
+const FANOUT_BASE =
+  typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:7676"
+    : "";
+
+const getWebSocketURL = () => {
+  if (typeof window === "undefined") return "";
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  if (window.location.hostname === "localhost") {
+    return "ws://localhost:7676";
+  }
+  return `${protocol}//${window.location.host}`;
+};
 
 export default function Demo() {
   const [longPollResponse, setLongPollResponse] = useState("");
@@ -191,7 +203,7 @@ export default function Demo() {
     setLoading((prev) => ({ ...prev, websocket: true }));
     setWebsocketResponse("");
 
-    const ws = new WebSocket(`ws://localhost:7676/test/websocket`);
+    const ws = new WebSocket(`${getWebSocketURL()}/test/websocket`);
     websocketRef.current = ws;
 
     ws.onopen = () => {

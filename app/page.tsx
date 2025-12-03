@@ -3,7 +3,11 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 
-const FANOUT_BASE = "http://localhost:7676";
+// In production (Fastly), Fanout is same-origin. Locally, use port 7676.
+const FANOUT_BASE =
+  typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:7676"
+    : "";
 
 interface Bid {
   bidder: string;

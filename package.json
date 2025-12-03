@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "serve": "next build && next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "compute:build": "npm run build && cd compute-js && npm run build",
+    "compute:serve": "npm run build && cd compute-js && npm install && npm run build && fastly compute serve",
+    "compute:publish": "npm run build && cd compute-js && npm install && npm run build && fastly compute publish"
   },
   "dependencies": {
     "next": "16.0.6",
