@@ -7,8 +7,7 @@ addEventListener("fetch", (event) => event.respondWith(handleRequest(event)));
 
 async function handleRequest(event) {
   const req = event.request;
-  const url = new URL(req.url);
-  const path = url.pathname;
+  const path = new URL(req.url).pathname;
 
   // Handle API routes
   if (path === "/api/auction") {
@@ -22,7 +21,7 @@ async function handleRequest(event) {
   // Serve static files
   let staticFile = getStaticFile(path);
 
-  // Try adding .html for page routes
+  // Add .html extension for clean URLs (/demo -> /demo.html)
   if (!staticFile && !path.includes(".") && path !== "/") {
     staticFile = getStaticFile(path + ".html");
   }

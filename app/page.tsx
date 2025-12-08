@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 
 // In production (Fastly), Fanout is same-origin. Locally, use port 7676.
@@ -38,6 +38,8 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
+  const connectionAttempted = useRef(false);
+  const hasReceivedData = useRef(false);
 
   // Fetch initial auction state
   useEffect(() => {
@@ -47,11 +49,19 @@ export default function Home() {
         setAuction(data);
         setTimeLeft(data.timeRemaining);
         setBidAmount(String(data.currentBid + 10));
+        hasReceivedData.current = true;
+        setConnected(true);
       });
   }, []);
 
   // Connect to SSE for real-time updates
   useEffect(() => {
+    // Prevent duplicate connections (React StrictMode can cause double mount)
+    if (connectionAttempted.current) {
+      return;
+    }
+    connectionAttempted.current = true;
+
     const eventSource = new EventSource(`${FANOUT_BASE}/test/sse`);
 
     eventSource.onopen = () => {
@@ -59,14 +69,13 @@ export default function Home() {
     };
 
     eventSource.onmessage = (event) => {
+      setConnected(true);
       try {
         const data = JSON.parse(event.data);
         if (data.type === "bid" || data.type === "reset") {
           setAuction(data);
           setTimeLeft(data.timeRemaining);
-          // Update suggested bid amount
           if (data.type === "reset") {
-            // Always reset to starting bid + 10 on reset
             setBidAmount(String(data.currentBid + 10));
           } else {
             setBidAmount((prev) => {
@@ -84,7 +93,12 @@ export default function Home() {
     };
 
     eventSource.onerror = () => {
-      setConnected(false);
+      if (
+        eventSource.readyState === EventSource.CLOSED &&
+        !hasReceivedData.current
+      ) {
+        setConnected(false);
+      }
     };
 
     return () => {

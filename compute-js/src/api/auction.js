@@ -1,5 +1,6 @@
 import { ConfigStore } from "fastly:config-store";
 import { KVStore } from "fastly:kv-store";
+import { jsonResponse, corsPreflightResponse } from "./utils.js";
 
 const AUCTION_KEY = "current_auction";
 const AUCTION_DURATION_MS = 5 * 60 * 1000; // 5 minutes
@@ -52,7 +53,7 @@ async function saveAuctionState(kvStore, state) {
   await kvStore.put(AUCTION_KEY, JSON.stringify(state));
 }
 
-function getPublicState(state) {
+function formatStateForClient(state) {
   return {
     item: state.item,
     currentBid: state.currentBid,
@@ -64,27 +65,56 @@ function getPublicState(state) {
   };
 }
 
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    },
-  });
+// Publish an event to all connected clients via Fanout
+async function publishToFanout(eventType, state) {
+  const publishBody = {
+    items: [
+      {
+        channel: "test",
+        formats: {
+          "http-stream": {
+            content: `data: ${JSON.stringify({
+              type: eventType,
+              ...formatStateForClient(state),
+            })}\n\n`,
+          },
+        },
+      },
+    ],
+  };
+
+  try {
+    const config = new ConfigStore("fanout_bidding_config");
+    const FANOUT_SERVICE_ID = config.get("FANOUT_SERVICE_ID") || "";
+    const apiToken = config.get("FASTLY_API_TOKEN") || "";
+
+    const headers = { "Content-Type": "application/json" };
+    if (apiToken) {
+      headers["Fastly-Key"] = apiToken;
+    }
+
+    const resp = await fetch(
+      `https://api.fastly.com/service/${FANOUT_SERVICE_ID}/publish/`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(publishBody),
+        backend: "fanout_publisher",
+      }
+    );
+
+    if (!resp.ok) {
+      console.error("Fanout publish failed:", resp.status, await resp.text());
+    }
+  } catch (error) {
+    console.error(`Failed to publish ${eventType} to Fanout:`, error);
+  }
 }
 
 export async function handleAuctionAPI(req) {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
-    });
+    return corsPreflightResponse("GET, POST, DELETE, OPTIONS");
   }
 
   // Open KV Store for persistent state
@@ -93,7 +123,7 @@ export async function handleAuctionAPI(req) {
   // GET - Get current auction state
   if (req.method === "GET") {
     const state = await getAuctionState(kvStore);
-    return jsonResponse(getPublicState(state));
+    return jsonResponse(formatStateForClient(state));
   }
 
   // DELETE - Reset auction
@@ -101,51 +131,13 @@ export async function handleAuctionAPI(req) {
     const newState = createNewAuction();
     await saveAuctionState(kvStore, newState);
 
-    // Publish reset to all connected clients via Fanout
-    const publishBody = {
-      items: [
-        {
-          channel: "test",
-          formats: {
-            "http-stream": {
-              content: `data: ${JSON.stringify({
-                type: "reset",
-                ...getPublicState(newState),
-              })}\n\n`,
-            },
-          },
-        },
-      ],
-    };
+    // Broadcast reset to all connected clients
+    await publishToFanout("reset", newState);
 
-    try {
-      const config = new ConfigStore("fanout_bidding_config");
-      const FANOUT_SERVICE_ID = config.get("FANOUT_SERVICE_ID") || "";
-      const apiToken = config.get("FASTLY_API_TOKEN") || "";
-
-      const headers = { "Content-Type": "application/json" };
-      if (apiToken) {
-        headers["Fastly-Key"] = apiToken;
-      }
-
-      const resp = await fetch(
-        `https://api.fastly.com/service/${FANOUT_SERVICE_ID}/publish/`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(publishBody),
-          backend: "fanout_publisher",
-        }
-      );
-
-      if (!resp.ok) {
-        console.error("Fanout publish failed:", resp.status, await resp.text());
-      }
-    } catch (error) {
-      console.error("Failed to publish reset to Fanout:", error);
-    }
-
-    return jsonResponse({ success: true, auction: getPublicState(newState) });
+    return jsonResponse({
+      success: true,
+      auction: formatStateForClient(newState),
+    });
   }
 
   // POST - Place a bid
@@ -194,57 +186,12 @@ export async function handleAuctionAPI(req) {
       // Save updated state to KV Store
       await saveAuctionState(kvStore, state);
 
-      // Publish to Fanout
-      const publishBody = {
-        items: [
-          {
-            channel: "test",
-            formats: {
-              "http-stream": {
-                content: `data: ${JSON.stringify({
-                  type: "bid",
-                  ...getPublicState(state),
-                })}\n\n`,
-              },
-            },
-          },
-        ],
-      };
-
-      try {
-        const config = new ConfigStore("fanout_bidding_config");
-        const FANOUT_SERVICE_ID = config.get("FANOUT_SERVICE_ID") || "";
-        const apiToken = config.get("FASTLY_API_TOKEN") || "";
-
-        const headers = { "Content-Type": "application/json" };
-        if (apiToken) {
-          headers["Fastly-Key"] = apiToken;
-        }
-
-        const resp = await fetch(
-          `https://api.fastly.com/service/${FANOUT_SERVICE_ID}/publish/`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify(publishBody),
-            backend: "fanout_publisher",
-          }
-        );
-
-        if (!resp.ok) {
-          console.error(
-            "Fanout publish failed:",
-            resp.status,
-            await resp.text()
-          );
-        }
-      } catch (error) {
-        console.error("Failed to publish to Fanout:", error);
-      }
+      // Broadcast new bid to all connected clients
+      await publishToFanout("bid", state);
 
       return jsonResponse({
         success: true,
-        auction: getPublicState(state),
+        auction: formatStateForClient(state),
       });
     } catch (error) {
       console.error("Error processing bid:", error);
