@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 
 // In production (Fastly), Fanout is same-origin. Locally, use port 7676.
@@ -38,7 +38,6 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
-  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Fetch initial auction state
   useEffect(() => {
@@ -54,7 +53,6 @@ export default function Home() {
   // Connect to SSE for real-time updates
   useEffect(() => {
     const eventSource = new EventSource(`${FANOUT_BASE}/test/sse`);
-    eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {
       setConnected(true);
@@ -202,7 +200,11 @@ export default function Home() {
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             {/* Item Image */}
             <div className="aspect-video bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center">
-              <div className="text-6xl">📷</div>
+              <img
+                src={auction.item.imageUrl}
+                alt={auction.item.title}
+                className="w-full h-full object-cover"
+              />
             </div>
 
             {/* Item Details */}
