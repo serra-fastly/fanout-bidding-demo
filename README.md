@@ -2,6 +2,8 @@
 
 A real-time auction demo showcasing [Fastly Fanout](https://www.fastly.com/documentation/guides/concepts/real-time-messaging/fanout/) for live updates across multiple browser tabs.
 
+Access on [https://hugely-ideal-hedgehog.edgecompute.app/](https://hugely-ideal-hedgehog.edgecompute.app/)
+
 ## Architecture
 
 - **Origin Service** (`compute-js/`): Serves the Next.js static app and handles API routes
