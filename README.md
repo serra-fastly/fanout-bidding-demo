@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fanout Bidding Demo
 
-## Getting Started
+A real-time auction demo showcasing [Fastly Fanout](https://www.fastly.com/documentation/guides/concepts/real-time-messaging/fanout/) for live updates across multiple browser tabs.
 
-First, run the development server:
+## Architecture
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Origin Service** (`compute-js/`): Serves the Next.js static app and handles API routes
+- **Fanout Service**: A separate Compute service with Fanout enabled for real-time SSE/WebSocket connections
+
+## Project Structure
+
+```
+fanout-bidding-demo/
+├── app/                    # Next.js App Router pages
+│   ├── page.tsx           # Main auction UI
+│   └── demo/page.tsx      # Connection type demo page
+├── compute-js/            # Fastly Compute service
+│   ├── src/
+│   │   ├── index.js       # Main entry point
+│   │   └── api/           # API route handlers
+│   ├── fastly.toml.example
+│   └── package.json
+├── public/                # Static assets
+└── package.json           # Next.js dependencies
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Prerequisites
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- [Node.js](https://nodejs.org/) 18+
+- [Fastly CLI](https://developer.fastly.com/reference/cli/)
+- A Fastly account with two Compute services:
+  - An **Origin service** (this project)
+  - A **Fanout service** (with Fanout feature enabled, pointing to the origin)
 
-## Learn More
+### 1. Install dependencies
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+cd compute-js && npm install
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 2. Configure the Compute service
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+cd compute-js
+cp fastly.toml.example fastly.toml
+```
 
-## Deploy on Vercel
+Edit `fastly.toml` and add your origin service ID.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 3. Create a Config Store
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+fastly config-store create --name fanout_bidding_config
+```
+
+Add the required keys:
+
+```bash
+# Your Fastly API token with global scope
+fastly config-store-entry create --store-id YOUR_STORE_ID --key FASTLY_API_TOKEN --value "your-api-token"
+
+# The service ID of your Fanout service
+fastly config-store-entry create --store-id YOUR_STORE_ID --key FANOUT_SERVICE_ID --value "your-fanout-service-id"
+```
+
+Link the Config Store to your service:
+
+```bash
+fastly resource-link create --service-id YOUR_SERVICE_ID --version latest --resource-id YOUR_STORE_ID --autoclone
+fastly service-version activate --version latest --service-id YOUR_SERVICE_ID
+```
+
+### 4. Create a KV Store (for persistent auction state)
+
+```bash
+fastly kv-store create --name auction_state
+fastly resource-link create --service-id YOUR_SERVICE_ID --version latest --resource-id YOUR_KV_STORE_ID --autoclone
+fastly service-version activate --version latest --service-id YOUR_SERVICE_ID
+```
+
+### 5. Build and Deploy
+
+```bash
+# Build the Next.js static export
+npm run build
+
+# Build and deploy the Compute service
+cd compute-js
+npm run build
+fastly compute publish
+```
+
+## Config Store Keys
+
+| Key                 | Description                                                      |
+| ------------------- | ---------------------------------------------------------------- |
+| `FASTLY_API_TOKEN`  | Your Fastly API token (needs global scope for Fanout publishing) |
+| `FANOUT_SERVICE_ID` | The service ID of your Fanout-enabled Compute service            |
