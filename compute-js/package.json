@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "generate-statics": "node scripts/generate-statics.js",
-    "prebuild": "npm run generate-statics && npx esbuild src/index.js --bundle --outfile=bin/index.js --format=esm --platform=neutral --target=es2022",
+    "prebuild": "npm run generate-statics && npx esbuild src/index.js --bundle --outfile=bin/index.js --format=esm --platform=neutral --target=es2022 --external:fastly:*",
     "build": "js-compute-runtime bin/index.js bin/main.wasm"
   },
   "devDependencies": {

@@ -1,0 +1,29 @@
+# This file describes a Fastly Compute package. To learn more visit:
+# https://developer.fastly.com/reference/fastly-toml/
+#
+# Copy this file to fastly.toml and fill in your service_id
+
+authors = ["your-name"]
+description = "Fanout Bidding Demo - Next.js static site with API routes"
+language = "javascript"
+manifest_version = 3
+name = "fanout-bidding-demo-origin"
+service_id = ""  # Fill in your origin service ID
+
+[scripts]
+build = "npm run build"
+
+[setup]
+
+  [setup.backends]
+
+    [setup.backends.fanout_publisher]
+      address = "api.fastly.com"
+      port = 443
+
+[local_server]
+
+  [local_server.backends]
+
+    [local_server.backends.fanout_publisher]
+      url = "http://127.0.0.1:5561"

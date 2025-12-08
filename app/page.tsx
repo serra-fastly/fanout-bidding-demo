@@ -63,17 +63,22 @@ export default function Home() {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "bid") {
+        if (data.type === "bid" || data.type === "reset") {
           setAuction(data);
           setTimeLeft(data.timeRemaining);
           // Update suggested bid amount
-          setBidAmount((prev) => {
-            const currentSuggested = parseInt(prev);
-            if (currentSuggested <= data.currentBid) {
-              return String(data.currentBid + 10);
-            }
-            return prev;
-          });
+          if (data.type === "reset") {
+            // Always reset to starting bid + 10 on reset
+            setBidAmount(String(data.currentBid + 10));
+          } else {
+            setBidAmount((prev) => {
+              const currentSuggested = parseInt(prev);
+              if (currentSuggested <= data.currentBid) {
+                return String(data.currentBid + 10);
+              }
+              return prev;
+            });
+          }
         }
       } catch {
         // Ignore non-JSON messages

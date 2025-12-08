@@ -1,3 +1,5 @@
+import { ConfigStore } from "fastly:config-store";
+
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -66,12 +68,25 @@ export async function handlePublishAPI(req) {
     };
 
     try {
-      const response = await fetch("http://127.0.0.1/publish/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(publishBody),
-        backend: "fanout_publisher",
-      });
+      // Get config from Config Store
+      const config = new ConfigStore("fanout_bidding_config");
+      const FANOUT_SERVICE_ID = config.get("FANOUT_SERVICE_ID") || "";
+      const apiToken = config.get("FASTLY_API_TOKEN") || "";
+
+      const headers = { "Content-Type": "application/json" };
+      if (apiToken) {
+        headers["Fastly-Key"] = apiToken;
+      }
+
+      const response = await fetch(
+        `https://api.fastly.com/service/${FANOUT_SERVICE_ID}/publish/`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(publishBody),
+          backend: "fanout_publisher",
+        }
+      );
 
       if (!response.ok) {
         const text = await response.text();

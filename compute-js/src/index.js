@@ -50,9 +50,8 @@ async function handleRequest(event) {
       status: 200,
       headers: {
         "Content-Type": staticFile.mimeType,
-        "Cache-Control": staticFile.mimeType.startsWith("text/html")
-          ? "no-cache"
-          : "public, max-age=31536000, immutable",
+        // Disable caching for demo - always serve fresh content
+        "Cache-Control": "no-cache, no-store, must-revalidate",
       },
     });
   }

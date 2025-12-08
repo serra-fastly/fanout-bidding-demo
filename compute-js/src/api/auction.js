@@ -1,29 +1,66 @@
-// In-memory auction state (resets on service restart)
-let auctionState = {
-  item: {
-    id: "vintage-camera",
-    title: "Vintage Polaroid Camera",
-    description:
-      "A beautiful 1970s Polaroid SX-70 Land Camera in excellent condition. Perfect for collectors and photography enthusiasts.",
-    imageUrl: "/camera.jpg",
-    startingPrice: 50,
-  },
-  currentBid: 50,
-  currentBidder: null,
-  bidCount: 0,
-  bids: [],
-  endTime: Date.now() + 5 * 60 * 1000, // 5 minutes from now
+import { ConfigStore } from "fastly:config-store";
+import { KVStore } from "fastly:kv-store";
+
+const AUCTION_KEY = "current_auction";
+const AUCTION_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
+const DEFAULT_ITEM = {
+  id: "vintage-camera",
+  title: "Vintage Polaroid Camera",
+  description:
+    "A beautiful 1970s Polaroid SX-70 Land Camera in excellent condition. Perfect for collectors and photography enthusiasts.",
+  imageUrl: "/camera.jpg",
+  startingPrice: 50,
 };
 
-function getPublicState() {
+function createNewAuction() {
   return {
-    item: auctionState.item,
-    currentBid: auctionState.currentBid,
-    currentBidder: auctionState.currentBidder,
-    bidCount: auctionState.bidCount,
-    bids: auctionState.bids.slice(0, 10),
-    endTime: auctionState.endTime,
-    timeRemaining: Math.max(0, auctionState.endTime - Date.now()),
+    item: DEFAULT_ITEM,
+    currentBid: DEFAULT_ITEM.startingPrice,
+    currentBidder: null,
+    bidCount: 0,
+    bids: [],
+    endTime: Date.now() + AUCTION_DURATION_MS,
+  };
+}
+
+async function getAuctionState(kvStore) {
+  try {
+    const entry = await kvStore.get(AUCTION_KEY);
+    if (entry) {
+      const state = JSON.parse(await entry.text());
+      // Check if auction has ended
+      if (Date.now() > state.endTime) {
+        // Auction ended, create a new one
+        const newState = createNewAuction();
+        await kvStore.put(AUCTION_KEY, JSON.stringify(newState));
+        return newState;
+      }
+      return state;
+    }
+  } catch (e) {
+    console.error("Error reading from KV store:", e);
+  }
+
+  // No existing auction, create a new one
+  const newState = createNewAuction();
+  await kvStore.put(AUCTION_KEY, JSON.stringify(newState));
+  return newState;
+}
+
+async function saveAuctionState(kvStore, state) {
+  await kvStore.put(AUCTION_KEY, JSON.stringify(state));
+}
+
+function getPublicState(state) {
+  return {
+    item: state.item,
+    currentBid: state.currentBid,
+    currentBidder: state.currentBidder,
+    bidCount: state.bidCount,
+    bids: state.bids.slice(0, 10),
+    endTime: state.endTime,
+    timeRemaining: Math.max(0, state.endTime - Date.now()),
   };
 }
 
@@ -50,22 +87,65 @@ export async function handleAuctionAPI(req) {
     });
   }
 
+  // Open KV Store for persistent state
+  const kvStore = new KVStore("auction_state");
+
   // GET - Get current auction state
   if (req.method === "GET") {
-    return jsonResponse(getPublicState());
+    const state = await getAuctionState(kvStore);
+    return jsonResponse(getPublicState(state));
   }
 
   // DELETE - Reset auction
   if (req.method === "DELETE") {
-    auctionState = {
-      ...auctionState,
-      currentBid: auctionState.item.startingPrice,
-      currentBidder: null,
-      bidCount: 0,
-      bids: [],
-      endTime: Date.now() + 5 * 60 * 1000,
+    const newState = createNewAuction();
+    await saveAuctionState(kvStore, newState);
+
+    // Publish reset to all connected clients via Fanout
+    const publishBody = {
+      items: [
+        {
+          channel: "test",
+          formats: {
+            "http-stream": {
+              content: `data: ${JSON.stringify({
+                type: "reset",
+                ...getPublicState(newState),
+              })}\n\n`,
+            },
+          },
+        },
+      ],
     };
-    return jsonResponse({ success: true, auction: getPublicState() });
+
+    try {
+      const config = new ConfigStore("fanout_bidding_config");
+      const FANOUT_SERVICE_ID = config.get("FANOUT_SERVICE_ID") || "";
+      const apiToken = config.get("FASTLY_API_TOKEN") || "";
+
+      const headers = { "Content-Type": "application/json" };
+      if (apiToken) {
+        headers["Fastly-Key"] = apiToken;
+      }
+
+      const resp = await fetch(
+        `https://api.fastly.com/service/${FANOUT_SERVICE_ID}/publish/`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(publishBody),
+          backend: "fanout_publisher",
+        }
+      );
+
+      if (!resp.ok) {
+        console.error("Fanout publish failed:", resp.status, await resp.text());
+      }
+    } catch (error) {
+      console.error("Failed to publish reset to Fanout:", error);
+    }
+
+    return jsonResponse({ success: true, auction: getPublicState(newState) });
   }
 
   // POST - Place a bid
@@ -78,20 +158,41 @@ export async function handleAuctionAPI(req) {
         return jsonResponse({ error: "Missing bidder or amount" }, 400);
       }
 
+      // Get current state from KV Store
+      const state = await getAuctionState(kvStore);
+
+      // Check if auction has ended
+      if (Date.now() > state.endTime) {
+        return jsonResponse({ error: "Auction has ended" }, 400);
+      }
+
+      // Validate bid amount
+      if (amount <= state.currentBid) {
+        return jsonResponse(
+          {
+            error: `Bid must be higher than current bid of $${state.currentBid}`,
+          },
+          400
+        );
+      }
+
       // Update state
-      auctionState.currentBid = amount;
-      auctionState.currentBidder = bidder;
-      auctionState.bidCount++;
-      auctionState.bids.unshift({
+      state.currentBid = amount;
+      state.currentBidder = bidder;
+      state.bidCount++;
+      state.bids.unshift({
         bidder,
         amount,
         timestamp: new Date().toISOString(),
       });
 
       // Keep only last 20 bids
-      if (auctionState.bids.length > 20) {
-        auctionState.bids = auctionState.bids.slice(0, 20);
+      if (state.bids.length > 20) {
+        state.bids = state.bids.slice(0, 20);
       }
+
+      // Save updated state to KV Store
+      await saveAuctionState(kvStore, state);
 
       // Publish to Fanout
       const publishBody = {
@@ -102,7 +203,7 @@ export async function handleAuctionAPI(req) {
               "http-stream": {
                 content: `data: ${JSON.stringify({
                   type: "bid",
-                  ...getPublicState(),
+                  ...getPublicState(state),
                 })}\n\n`,
               },
             },
@@ -111,12 +212,25 @@ export async function handleAuctionAPI(req) {
       };
 
       try {
-        const resp = await fetch("http://127.0.0.1/publish/", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(publishBody),
-          backend: "fanout_publisher",
-        });
+        const config = new ConfigStore("fanout_bidding_config");
+        const FANOUT_SERVICE_ID = config.get("FANOUT_SERVICE_ID") || "";
+        const apiToken = config.get("FASTLY_API_TOKEN") || "";
+
+        const headers = { "Content-Type": "application/json" };
+        if (apiToken) {
+          headers["Fastly-Key"] = apiToken;
+        }
+
+        const resp = await fetch(
+          `https://api.fastly.com/service/${FANOUT_SERVICE_ID}/publish/`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify(publishBody),
+            backend: "fanout_publisher",
+          }
+        );
+
         if (!resp.ok) {
           console.error(
             "Fanout publish failed:",
@@ -128,8 +242,12 @@ export async function handleAuctionAPI(req) {
         console.error("Failed to publish to Fanout:", error);
       }
 
-      return jsonResponse({ success: true, auction: getPublicState() });
+      return jsonResponse({
+        success: true,
+        auction: getPublicState(state),
+      });
     } catch (error) {
+      console.error("Error processing bid:", error);
       return jsonResponse({ error: "Invalid request body" }, 400);
     }
   }
