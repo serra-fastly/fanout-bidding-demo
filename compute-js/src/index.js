@@ -52,12 +52,19 @@ async function handleRequest(event) {
       ? "no-cache, no-store, must-revalidate"
       : "public, max-age=3600";
 
+    const headers = {
+      "Content-Type": staticFile.mimeType,
+      "Cache-Control": cacheControl,
+    };
+
+    // Add Content-Length for binary files to ensure proper rendering
+    if (staticFile.binary && body instanceof Uint8Array) {
+      headers["Content-Length"] = body.length.toString();
+    }
+
     return new Response(body, {
       status: 200,
-      headers: {
-        "Content-Type": staticFile.mimeType,
-        "Cache-Control": cacheControl,
-      },
+      headers: headers,
     });
   }
 
