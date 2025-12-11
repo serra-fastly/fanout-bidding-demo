@@ -37,8 +37,8 @@ fanout-bidding-demo/
 ### 1. Install dependencies
 
 ```bash
-npm install
-cd compute-js && npm install
+pnpm install
+cd compute-js && pnpm install
 ```
 
 ### 2. Configure the Compute service
@@ -81,15 +81,22 @@ fastly resource-link create --service-id YOUR_SERVICE_ID --version latest --reso
 fastly service-version activate --version latest --service-id YOUR_SERVICE_ID
 ```
 
-### 5. Build and Deploy
+### 5. Re-generate statics (if code changes were made)
+
+```bash
+pnpm build
+pnpm run generate-statics
+```
+
+### 6. Build and Deploy
 
 ```bash
 # Build the Next.js static export
-npm run build
+pnpm run build
 
 # Build and deploy the Compute service
 cd compute-js
-npm run build
+pnpm run build
 fastly compute publish
 ```
 

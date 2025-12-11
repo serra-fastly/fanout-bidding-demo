@@ -45,12 +45,18 @@ async function handleRequest(event) {
       body = staticFile.content;
     }
 
+    // Cache images and other static assets, but not HTML pages
+    // HTML pages need to be fresh to ensure SSE connections work properly
+    const isHtml = staticFile.mimeType === "text/html";
+    const cacheControl = isHtml
+      ? "no-cache, no-store, must-revalidate"
+      : "public, max-age=3600";
+
     return new Response(body, {
       status: 200,
       headers: {
         "Content-Type": staticFile.mimeType,
-        // Disable caching for demo - always serve fresh content
-        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Cache-Control": cacheControl,
       },
     });
   }

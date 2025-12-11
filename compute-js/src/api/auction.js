@@ -30,6 +30,12 @@ async function getAuctionState(kvStore) {
     const entry = await kvStore.get(AUCTION_KEY);
     if (entry) {
       const state = JSON.parse(await entry.text());
+
+      // Ensure item exists
+      if (!state.item) {
+        state.item = DEFAULT_ITEM;
+      }
+
       // Check if auction has ended
       if (Date.now() > state.endTime) {
         // Auction ended, create a new one
