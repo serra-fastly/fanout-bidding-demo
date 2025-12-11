@@ -7,7 +7,9 @@ Access on [https://hugely-ideal-hedgehog.edgecompute.app/](https://hugely-ideal-
 ## Architecture
 
 - **Origin Service** (`compute-js/`): Serves the Next.js static app and handles API routes
-- **Fanout Service**: A separate Compute service with Fanout enabled for real-time SSE/WebSocket connections
+- **Fanout Service**: A separate Compute service with Fanout enabled for real-time SSE connections
+
+> *There is also a connection demo that demonstrates the different connection types that Fanout supports which can be accessed through the `Connection Demo` link on the top-right or through [here](https://hugely-ideal-hedgehog.edgecompute.app/).*
 
 ## Project Structure
 
@@ -34,7 +36,7 @@ fanout-bidding-demo/
 - [Fastly CLI](https://developer.fastly.com/reference/cli/)
 - A Fastly account with two Compute services:
   - An **Origin service** (this project)
-  - A **Fanout service** (with Fanout feature enabled, pointing to the origin)
+  - A **Fanout service** ([Fanout Starter Kit](https://github.com/fastly/compute-starter-kit-rust-fanout))
 
 ### 1. Install dependencies
 
