@@ -6,7 +6,7 @@ description = "Fanout Bidding Demo - Next.js static site with API routes"
 language = "javascript"
 manifest_version = 3
 name = "fanout-bidding-demo-origin"
-service_id = "AXoqT8Ikjo0ad5aGkBpKWg"
+service_id = "Zz5GDkjmxPQC23e3luPPlh"
 
 [scripts]
 build = "npm run build"
