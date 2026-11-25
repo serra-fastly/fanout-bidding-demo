@@ -10,7 +10,7 @@
     "build": "js-compute-runtime bin/index.js bin/main.wasm"
   },
   "devDependencies": {
-    "@fastly/js-compute": "^3.0.0",
+    "@fastly/js-compute": "^4.4.0",
     "esbuild": "^0.20.0"
   }
 }
